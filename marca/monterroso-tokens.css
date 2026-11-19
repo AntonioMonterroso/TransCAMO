@@ -1,0 +1,134 @@
+/* ═══════════════════════════════════════════════════════════════════
+   MONTERROSO-TOKENS.CSS — identidad visual de la firma
+   Paleta Vino + Marfil + Latón · Cormorant Garamond + IBM Plex
+   Decidido por Antonio el 2026-10-27 (Fase 0 del plan del Ecosistema).
+
+   Orden de carga en cualquier sistema MONTERROSO:
+     1. monterroso-tokens.css   (este archivo: fuentes y variables)
+     2. monterroso-base.css     (componentes)
+     3. monterroso-temas.js     (aplica el tema guardado de cada persona)
+
+   Los colores de abajo son los de Vino Claro. monterroso-temas.js los
+   reemplaza en vivo según el tema elegido; si el JS no carga, la página
+   igual se ve con Vino (claro u oscuro según el equipo).
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Fuentes locales (funcionan sin internet) ───────────────────── */
+@font-face { font-family: "Cormorant Garamond"; font-weight: 500; font-style: normal; font-display: swap; src: url("fuentes/cormorant-garamond-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Cormorant Garamond"; font-weight: 500; font-style: italic; font-display: swap; src: url("fuentes/cormorant-garamond-latin-500-italic.woff2") format("woff2"); }
+@font-face { font-family: "Cormorant Garamond"; font-weight: 600; font-style: normal; font-display: swap; src: url("fuentes/cormorant-garamond-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Cormorant Garamond"; font-weight: 700; font-style: normal; font-display: swap; src: url("fuentes/cormorant-garamond-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 400; font-style: normal; font-display: swap; src: url("fuentes/ibm-plex-sans-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 400; font-style: italic; font-display: swap; src: url("fuentes/ibm-plex-sans-latin-400-italic.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 500; font-style: normal; font-display: swap; src: url("fuentes/ibm-plex-sans-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Sans"; font-weight: 600; font-style: normal; font-display: swap; src: url("fuentes/ibm-plex-sans-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 400; font-style: normal; font-display: swap; src: url("fuentes/ibm-plex-mono-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "IBM Plex Mono"; font-weight: 500; font-style: normal; font-display: swap; src: url("fuentes/ibm-plex-mono-latin-500-normal.woff2") format("woff2"); }
+
+:root {
+  /* ── Marca (fijos: no cambian con el tema) ── */
+  --vino: #7a2e3b;
+  --vino-oscuro: #5c2130;
+  --vino-profundo: #3e121c;
+  --vino-suave: #b85c6e;
+  --marfil: #f7f2ea;
+  --marfil-claro: #fffdf9;
+  --laton: #b08d57;          /* adornos, líneas y fondos; no para texto pequeño */
+  --laton-texto: #80602f;    /* latón para texto sobre marfil (contraste 5.2:1) */
+
+  /* ── Tema (los cambia monterroso-temas.js; mismos nombres que los paneles S) ── */
+  --primary: #7a2e3b;
+  --primary-dark: #5c2130;
+  --primary-deeper: #3e121c;
+  --accent: #a07a3f;
+  --bg: #f7f2ea;
+  --bg2: #fffdf9;
+  --bg3: #efe7da;
+  --card: #fffdf9;
+  --border: #e2d6c4;
+  --text: #2a1a1d;
+  --text-muted: #6b5558;
+
+  /* ── Derivados (se recalculan solos con cualquier tema) ── */
+  --primary-tinte: color-mix(in srgb, var(--primary) 10%, transparent);
+  --primary-tinte-fuerte: color-mix(in srgb, var(--primary) 18%, transparent);
+  --sobre-primary: #ffffff;
+  --hairline: color-mix(in srgb, var(--border) 75%, transparent);
+  --foco: color-mix(in srgb, var(--primary) 45%, transparent);
+
+  /* ── Estados (iguales en todos los temas claros; se ajustan en oscuros) ── */
+  --exito: #2a7353;   --exito-fondo: color-mix(in srgb, #2a7353 12%, transparent);
+  --aviso: #8a5a0f;   --aviso-fondo: color-mix(in srgb, #c98a1f 14%, transparent);
+  --peligro: #b3261e; --peligro-fondo: color-mix(in srgb, #b3261e 11%, transparent);
+  --info: #2f5d8a;    --info-fondo: color-mix(in srgb, #2f5d8a 11%, transparent);
+
+  /* ── Tipografía ── */
+  --fuente-titulos: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+  --fuente-texto: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --fuente-cifras: "IBM Plex Mono", Consolas, "SF Mono", monospace;
+
+  /* Escala 1.25 (base 15px, pensada para pantallas de trabajo con tablas) */
+  --t-xs: 0.75rem;    /* 12 */
+  --t-sm: 0.8125rem;  /* 13 */
+  --t-base: 0.9375rem;/* 15 */
+  --t-md: 1.0625rem;  /* 17 */
+  --t-lg: 1.375rem;   /* 22 */
+  --t-xl: 1.75rem;    /* 28 */
+  --t-2xl: 2.25rem;   /* 36 */
+  --t-3xl: 3rem;      /* 48 */
+
+  /* ── Espacios (escala de 4px) ── */
+  --e-1: 4px; --e-2: 8px; --e-3: 12px; --e-4: 16px; --e-5: 20px;
+  --e-6: 24px; --e-8: 32px; --e-10: 40px; --e-12: 48px; --e-16: 64px;
+
+  /* ── Forma ── */
+  /* Redondeado y con relieve (ajuste de Antonio, 2026-10-27) */
+  --radio-sm: 10px;
+  --radio-md: 14px;
+  --radio-lg: 20px;
+  --radio-xl: 26px;
+  --radio-pill: 999px;
+  --sombra-1: 0 1px 2px rgba(62, 18, 28, 0.06), 0 4px 12px -2px rgba(62, 18, 28, 0.08);
+  --sombra-2: 0 2px 4px rgba(62, 18, 28, 0.05), 0 12px 28px -6px rgba(62, 18, 28, 0.16);
+  --sombra-3: 0 4px 10px rgba(62, 18, 28, 0.06), 0 28px 60px -12px rgba(62, 18, 28, 0.28);
+  --brillo-borde: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+
+  /* ── Movimiento (reglas del Ecosistema: nunca ease-in, interfaz < 300ms) ── */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --dur-boton: 140ms;
+  --dur-menu: 200ms;
+  --dur-ventana: 260ms;
+}
+
+/* Si el JS no carga y el equipo está en modo oscuro: Vino Oscuro */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-modo]) {
+    --primary: #7a2e3b; --primary-dark: #5c2130; --primary-deeper: #3e121c;
+    --accent: #c9a66b; --bg: #170f12; --bg2: #1d1418; --bg3: #26191e; --card: #1d1418;
+    --border: #3d232a; --text: #f4ebe2; --text-muted: #b39a96;
+    color-scheme: dark;
+  }
+}
+
+/* Ajustes que necesitan los temas oscuros */
+:root[data-modo="oscuro"],
+:root:not([data-modo]) {
+  --sombra-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 14px -4px rgba(0, 0, 0, 0.45);
+  --sombra-2: 0 2px 4px rgba(0, 0, 0, 0.35), 0 14px 30px -6px rgba(0, 0, 0, 0.55);
+  --sombra-3: 0 4px 10px rgba(0, 0, 0, 0.4), 0 30px 64px -12px rgba(0, 0, 0, 0.7);
+  --brillo-borde: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+:root[data-modo="oscuro"] {
+  --exito: #5cc49a; --aviso: #e0b04f; --peligro: #f07b72; --info: #7fb0e0;
+  --primary-tinte: color-mix(in srgb, var(--primary) 26%, transparent);
+  --primary-tinte-fuerte: color-mix(in srgb, var(--primary) 40%, transparent);
+  --foco: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-modo]) {
+    --sombra-1: 0 1px 2px rgba(62, 18, 28, 0.06), 0 4px 12px -2px rgba(62, 18, 28, 0.08);
+    --sombra-2: 0 2px 4px rgba(62, 18, 28, 0.05), 0 12px 28px -6px rgba(62, 18, 28, 0.16);
+    --sombra-3: 0 4px 10px rgba(62, 18, 28, 0.06), 0 28px 60px -12px rgba(62, 18, 28, 0.28);
+    --brillo-borde: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+}
