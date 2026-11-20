@@ -1,6 +1,6 @@
 # TransCAMO · Control de pipas
 
-Sistema web para el cliente TransCAMO. Lee los vales «Santander 1» con el Texto en vivo del iPhone, guarda los vales en su propia base de Supabase y descarga el Excel del mes con el mismo formato que «PIPAS Sep26.xlsx».
+Sistema web para el cliente TransCAMO. Lee solas las fotos de los vales «Santander 1», tickets y facturas con la IA (Claude Haiku 5.5), guarda los vales en su propia base de Supabase y descarga el Excel del mes con el mismo formato que «PIPAS Sep26.xlsx».
 
 No es parte del ERP de la firma: tiene su propia base y se publica aparte.
 
@@ -10,7 +10,10 @@ No es parte del ERP de la firma: tiene su propia base y se publica aparte.
 - `marca/`: el diseño del ERP copiado tal cual: tokens, hoja base, motor de temas, logo, fuentes y `erp.css` (la hoja del ERP con su letra, casillas, botones y menú de celular). Si cambia en el ERP, se vuelve a copiar; `css/app.css` solo agrega lo propio de TransCAMO.
 - `js/motor-xlsx.js`: abre la plantilla, cambia datos, inserta filas y recalcula las fórmulas sin tocar formatos.
 - `js/excel-pipas.js`: dónde va cada dato en cada hoja (TS01–TS04, Rastra, TACOMA, GASTOS, Vales, Hoja1, FINAL).
-- `js/lector.js`: reparte el texto copiado del vale (número, fecha, total, diésel, viático, arbitrio, recorrido).
+- `js/lector.js`: reparte un texto pegado a mano (respaldo si la lectura falla).
+- `supabase/functions/leer-vale/index.ts`: función de Supabase que manda las fotos a Claude Haiku 5.5 y devuelve los vales agrupados (frente, reverso y tickets). No guarda las fotos. Solo contesta a usuarios con sesión y rol Administrador o Captura, desde studiomonterroso.com o localhost:8977. La llave va en el secreto `ANTHROPIC_API_KEY` de Supabase (vence 19/11/2027).
+- `sql/03-lectura-ia.sql`: tabla `lecturas_ia` y función `usar_lecturas` (tope de 300 fotos por usuario al día, hora de Guatemala).
+- Subir la función: `supabase functions deploy leer-vale --project-ref qbcysmomueqrqwyaqkvc --no-verify-jwt --use-api` (con un token de acceso temporal).
 - `js/datos.js`: guarda en Supabase; si `js/config.js` está vacío, trabaja en «modo de prueba» dentro del navegador.
 - `sql/01-esquema.sql`: tablas, permisos y la bodega privada de la plantilla.
 - `plantilla/` y `pruebas/`: solo en esta Mac. No se publican (tienen datos del cliente).

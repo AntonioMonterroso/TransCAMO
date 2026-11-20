@@ -534,6 +534,209 @@
       '</tr>';
   }
 
+  const LOTE = 6;
+  const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+  function prepararFoto(f) {
+    if (f.prep) return f.prep;
+    if (!f.archivo) return Promise.reject(new Error('Esta foto ya no está en pantalla. Vuelve a ponerla.'));
+    f.prep = (async function () {
+      let img;
+      try { img = await createImageBitmap(f.archivo, { imageOrientation: 'from-image' }); } catch (e) {
+        throw new Error('La foto ' + (f.nombre ? '«' + f.nombre + '» ' : '') + 'no se pudo abrir en este navegador. Si es HEIC, súbela desde el iPhone o desde Safari.');
+      }
+      const k = Math.min(1, 1568 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k);
+      c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      if (img.close) img.close();
+      const url = c.toDataURL('image/jpeg', 0.85);
+      return { data: url.slice(url.indexOf(',') + 1), tipo: 'image/jpeg' };
+    })();
+    f.prep.catch(function () { f.prep = null; });
+    return f.prep;
+  }
+
+  function pilotosConocidos() {
+    return Array.from(new Set(E.vales.map(function (x) { return x.piloto; }).filter(Boolean)));
+  }
+
+  function nombreUnidad(id) { return UNI[id] ? UNI[id].nombre : id; }
+
+  function resumenLectura(d) {
+    if (!d) return '';
+    const tipos = { ticket: 'Ticket', factura: 'Factura', recibo: 'Recibo', otro: 'Papel' };
+    return [tipos[d.tipo] || '', d.numero ? 'No. ' + d.numero : '', d.fecha && FECHA_RE.test(d.fecha) ? fmtFecha(d.fecha) : '', d.total != null ? fmtQ(d.total) : ''].filter(Boolean).join(' · ');
+  }
+
+  function unirLecturas(a, b) {
+    if (!a) return b ? JSON.parse(JSON.stringify(b)) : null;
+    if (!b) return a;
+    const x = JSON.parse(JSON.stringify(a));
+    ['numero', 'fecha', 'unidad', 'placa', 'piloto'].forEach(function (k) { if (!x[k] && b[k]) x[k] = b[k]; });
+    if (x.total == null && b.total != null) x.total = b.total;
+    if (x.tipo !== 'vale' && b.tipo === 'vale') x.tipo = 'vale';
+    (b.renglones || []).forEach(function (r) {
+      const ya = (x.renglones || []).some(function (y) { return y.concepto === r.concepto && y.monto === r.monto; });
+      if (!ya) (x.renglones = x.renglones || []).push(r);
+    });
+    x.recorrido = x.recorrido || {};
+    const rb = b.recorrido || {};
+    if (x.recorrido.gal_trans == null && rb.gal_trans != null) x.recorrido.gal_trans = rb.gal_trans;
+    if (!x.recorrido.cargo && rb.cargo) x.recorrido.cargo = rb.cargo;
+    if (!x.recorrido.destinos && rb.destinos) x.recorrido.destinos = rb.destinos;
+    x.factura = x.factura || {};
+    const fb = b.factura || {};
+    ['fecha', 'serie', 'nit', 'proveedor'].forEach(function (k) { if (!x.factura[k] && fb[k]) x.factura[k] = fb[k]; });
+    if (x.factura.monto == null && fb.monto != null) x.factura.monto = fb.monto;
+    x.dudas = (x.dudas || []).concat(b.dudas || []);
+    return x;
+  }
+
+  function valeDeLectura(d, unidad) {
+    const u = UNI[unidad] || UNIDADES[0];
+    const x = { renglones: [], dudas: [] };
+    if (!d) return x;
+    if (d.numero) x.numero = String(d.numero).replace(/^0+(?=\d)/, '');
+    if (FECHA_RE.test(d.fecha || '')) x.fecha = d.fecha;
+    if (d.total != null) x.total = d.total;
+    if (d.piloto) x.piloto = d.piloto;
+    if (d.placa) x.placa = String(d.placa).toUpperCase().replace(/\s+/g, '');
+    (d.renglones || []).forEach(function (r) {
+      const c = CON[r.concepto] ? r.concepto : 'otro';
+      if (r.monto == null && c !== 'diesel') return;
+      if (u.tipo === 'tacoma' && c !== 'diesel') { x.dudas.push('Se dejó fuera «' + (r.escrito || CON[c].nombre) + '»: la Tacoma solo lleva diésel.'); return; }
+      const n = nuevoRenglon(c, unidad);
+      n.monto = r.monto;
+      if (CON[c].tipo === 'combustible') {
+        n.galones = r.galones;
+        if (r.galones > 0 && r.monto > 0) {
+          const precio = r.monto / r.galones;
+          if (precio < 20 || precio > 70) x.dudas.push('Revisa los galones de diésel: ' + fmtNum(r.galones, 3) + ' gal por ' + fmtQ(r.monto) + ' da ' + fmtQ(precio) + ' por galón.');
+        }
+      }
+      if (CON[c].tipo === 'gasto') {
+        const det = r.detalle || ((c === 'otro' || c === 'reparacion') ? r.escrito : '');
+        if (det) n.detalle = det;
+      }
+      if (FECHA_RE.test(r.fecha || '') && r.fecha !== x.fecha) n.fecha = r.fecha;
+      x.renglones.push(normalizarRenglon(n, unidad));
+    });
+    const rc = d.recorrido || {};
+    const comb = x.renglones.find(function (r) { return tipoDe(r) === 'combustible'; });
+    if (comb) {
+      if (rc.gal_trans != null && (u.tipo === 'pipa' || u.tipo === 'tag')) comb.gal_trans = rc.gal_trans;
+      if (rc.cargo && u.tipo === 'pipa') comb.cargo = rc.cargo;
+      if (rc.destinos && u.tipo !== 'tacoma') comb.destino = rc.destinos;
+    } else if (rc.gal_trans != null || rc.destinos) {
+      x.dudas.push('Trae recorrido (' + [rc.gal_trans != null ? fmtNum(rc.gal_trans, 0) + ' gal' : '', rc.destinos || ''].filter(Boolean).join(', ') + ') pero no un renglón de diésel.');
+    }
+    const fa = d.factura || {};
+    if (fa.serie || fa.nit || fa.proveedor || fa.monto != null) {
+      const fac = { fecha: FECHA_RE.test(fa.fecha || '') ? fa.fecha : null, serie: fa.serie || null, nit: fa.nit || null, proveedor: fa.proveedor || null, monto: fa.monto };
+      let g = x.renglones.find(function (r) { return r.concepto === 'reparacion' || r.concepto === 'otro'; }) || x.renglones.find(function (r) { return tipoDe(r) === 'gasto'; });
+      if (!g && u.tipo !== 'tacoma') {
+        g = normalizarRenglon(Object.assign(nuevoRenglon('reparacion', unidad), { monto: fa.monto, detalle: fa.proveedor || '' }), unidad);
+        x.renglones.push(g);
+      }
+      if (g) g.factura = fac;
+    }
+    if (d.unidad && d.unidad !== unidad) x.dudas.unshift('La foto dice ' + nombreUnidad(d.unidad) + ', pero el paquete es de ' + u.nombre + '.');
+    x.dudas = x.dudas.concat(d.dudas || []);
+    return x;
+  }
+
+  function resumenParaSiguiente(it) {
+    const d = it && it.lectura;
+    if (!d) return '';
+    return [d.numero ? 'No. ' + d.numero : '', d.fecha || '', d.total != null ? 'total ' + d.total : '', (d.renglones || []).map(function (r) { return r.concepto + ' ' + (r.monto == null ? '' : r.monto); }).join(', ')].filter(Boolean).join('; ');
+  }
+
+  function repintarPaquete() {
+    if (E.vista === 'paquete') guardarScroll(pintar);
+  }
+
+  async function leerPaquete() {
+    const p = E.paquete;
+    if (!p || p.leyendo) return;
+    p.leyendo = true;
+    try {
+      while (E.paquete === p) {
+        const ini = p.items.findIndex(function (it) { return it.estado === 'cola'; });
+        if (ini < 0) break;
+        let fin = ini;
+        let nf = p.items[ini].fotos.length;
+        while (fin + 1 < p.items.length && p.items[fin + 1].estado === 'cola' && nf + p.items[fin + 1].fotos.length <= LOTE) { fin++; nf += p.items[fin].fotos.length; }
+        const lote = p.items.slice(ini, fin + 1);
+        lote.forEach(function (it) { it.estado = 'leyendo'; it.error = ''; });
+        repintarPaquete();
+        const lista = [];
+        const malos = [];
+        for (let k = 0; k < lote.length; k++) {
+          const it = lote[k];
+          try {
+            const prep = [];
+            for (const f of it.fotos) prep.push(await prepararFoto(f));
+            it.fotos.forEach(function (f, j) { lista.push({ foto: f, prep: prep[j], pos: k + j / 100 }); });
+          } catch (e) {
+            it.estado = 'error';
+            it.error = e.message;
+            malos.push({ it: it, pos: k });
+          }
+        }
+        let nuevos = [];
+        if (lista.length) {
+          try {
+            const r = await Datos.leerFotos({
+              fotos: lista.map(function (x) { return x.prep; }),
+              unidad: p.unidad,
+              pilotos: pilotosConocidos(),
+              anterior: ini > 0 ? resumenParaSiguiente(p.items[ini - 1]) : ''
+            });
+            if (E.paquete !== p) break;
+            const usadas = new Set();
+            (r.documentos || []).forEach(function (d, k) {
+              const mias = (d.fotos || []).map(function (n) { return lista[n - 1]; }).filter(function (x) {
+                if (!x || usadas.has(x)) return false;
+                usadas.add(x);
+                return true;
+              });
+              if (!mias.length) return;
+              const fotos = mias.map(function (x) { return x.foto; });
+              const prev = p.items[ini - 1];
+              if (k === 0 && d.sigue_del_anterior && prev && !prev.guardado && prev.estado === 'leido' && prev !== E.editor && !(E.editor && E.editor.itemObj === prev)) {
+                prev.fotos = prev.fotos.concat(fotos);
+                prev.lectura = unirLecturas(prev.lectura, d);
+                return;
+              }
+              nuevos.push({ it: { fotos: fotos, guardado: false, estado: 'leido', lectura: d }, pos: Math.min.apply(null, mias.map(function (x) { return x.pos; })) });
+            });
+            lista.forEach(function (x) {
+              if (!usadas.has(x)) nuevos.push({ it: { fotos: [x.foto], guardado: false, estado: 'leido', lectura: null, error: 'La lectura no tomó en cuenta esta foto: escribe sus datos o vuelve a leerla.' }, pos: x.pos });
+            });
+            p.quedan = r.quedan;
+          } catch (e) {
+            if (E.paquete !== p) break;
+            nuevos = [];
+            lote.forEach(function (it, k) { if (it.estado === 'leyendo') { it.estado = 'error'; it.error = e.message; nuevos.push({ it: it, pos: k }); } });
+            const fila = nuevos.concat(malos).sort(function (a, b) { return a.pos - b.pos; }).map(function (x) { return x.it; });
+            p.items.splice(p.items.indexOf(lote[0]), lote.length, ...fila);
+            aviso(e.message, 'error');
+            repintarPaquete();
+            break;
+          }
+        }
+        const fila = nuevos.concat(malos).sort(function (a, b) { return a.pos - b.pos; }).map(function (x) { return x.it; });
+        p.items.splice(p.items.indexOf(lote[0]), lote.length, ...fila);
+        repintarPaquete();
+      }
+    } finally {
+      p.leyendo = false;
+      repintarPaquete();
+    }
+  }
+
   function vistaPaquete() {
     const p = E.paquete;
     if (!p) {
@@ -546,22 +749,35 @@
     }
     const u = UNI[p.unidad];
     const pend = p.items.filter(function (i) { return !i.guardado; }).length;
+    const leyendo = p.items.filter(function (i) { return i.estado === 'cola' || i.estado === 'leyendo'; }).length;
+    const conError = p.items.filter(function (i) { return i.estado === 'error' && !i.guardado; }).length;
     let html = titulo('Paquete de ' + u.nombre, '<button type="button" class="m-btn m-btn-secundario" data-accion="cerrar-paquete" title="Terminar este paquete y escoger otra pipa">Terminar paquete</button>');
-    html += '<div class="m-tarjeta tarjeta-paquete"><p class="m-texto-suave">Puedes escoger muchas fotos a la vez. Si el frente y el reverso de un vale quedaron en fotos separadas, usa «Unir con el anterior».</p>' +
+    html += '<div class="m-tarjeta tarjeta-paquete"><p class="m-texto-suave">Escoge todas las fotos del paquete a la vez: se leen solas y se juntan el frente, el reverso y los tickets de cada vale. Las fotos no se guardan. Si algo quedó separado, usa «Unir con el anterior».</p>' +
       '<div class="erp-chips">' +
       '<label class="m-btn m-btn-primario" title="Escoger varias fotos de la galería o tomar fotos con la cámara"><input type="file" accept="image/*" multiple data-accion="fotos" class="sr">' + ico('mas') + 'Agregar fotos</label>' +
       '<label class="m-btn m-btn-secundario" title="Abrir la cámara para tomar una foto"><input type="file" accept="image/*" capture="environment" data-accion="fotos" class="sr">' + ico('paquete') + 'Tomar foto</label>' +
       '<button type="button" class="m-btn m-btn-secundario" data-accion="sin-foto" title="Capturar un vale escribiendo los datos, sin foto">Vale sin foto</button>' +
-      '</div>' + (p.items.length ? '<p class="m-texto-suave">' + p.items.length + ' en el paquete · ' + pend + ' por revisar</p>' : '') + '</div>';
+      (conError && !leyendo ? '<button type="button" class="m-btn m-btn-secundario" data-accion="releer-todas" title="Volver a leer las fotos que no se pudieron leer">Volver a leer ' + conError + '</button>' : '') +
+      '</div>' + (p.items.length ? '<p class="m-texto-suave" aria-live="polite">' + p.items.length + ' en el paquete · ' + pend + ' por revisar' + (leyendo ? ' · leyendo ' + leyendo + '…' : '') + (p.quedan != null ? ' · te quedan ' + p.quedan + ' lecturas hoy' : '') + '</p>' : '') + '</div>';
     if (!p.items.length) return html + vacio('Paquete vacío', 'Agrega las fotos de los vales de ' + u.nombre + '.');
     html += '<ul class="lista-paquete">' + p.items.map(function (it, i) {
-      return '<li class="m-tarjeta item-paquete' + (it.guardado ? ' guardado' : '') + '">' +
+      const ocupado = it.estado === 'cola' || it.estado === 'leyendo';
+      const dudas = it.lectura ? valeDeLectura(it.lectura, p.unidad).dudas.length : 0;
+      let tit;
+      if (it.guardado) tit = '<span class="m-estado aprobado">Guardado</span> No. ' + esc(it.numero || '—') + ' · ' + fmtQ(it.total);
+      else if (it.estado === 'leyendo') tit = '<span class="m-estado en-proceso">Leyendo…</span> Vale ' + (i + 1);
+      else if (it.estado === 'cola') tit = '<span class="m-estado en-proceso">En espera</span> Vale ' + (i + 1);
+      else if (it.estado === 'error') tit = '<span class="m-estado error">No se leyó</span> Vale ' + (i + 1);
+      else tit = '<span class="m-estado pendiente">Por revisar</span> ' + esc(resumenLectura(it.lectura) || 'Vale ' + (i + 1)) + (dudas ? ' <span class="m-texto-suave nota-chica">' + dudas + ' duda' + (dudas === 1 ? '' : 's') + '</span>' : '');
+      return '<li class="m-tarjeta item-paquete' + (it.guardado ? ' guardado' : '') + (it.estado === 'error' && !it.guardado ? ' con-error' : '') + '">' +
         '<div class="miniaturas">' + (it.fotos.length ? it.fotos.map(function (f) { return '<img src="' + f.url + '" alt="Foto del vale" loading="lazy">'; }).join('') : '<span class="sin-foto">Sin foto</span>') + '</div>' +
-        '<div class="item-info"><div class="item-titulo">' + (it.guardado ? '<span class="m-estado aprobado">Guardado</span> No. ' + esc(it.numero || '—') + ' · ' + fmtQ(it.total) : '<span class="m-estado pendiente">Por revisar</span> Vale ' + (i + 1)) + '</div>' +
+        '<div class="item-info"><div class="item-titulo">' + tit + '</div>' +
+        (it.error && !it.guardado ? '<p class="m-texto-suave nota-chica item-error">' + esc(it.error) + '</p>' : '') +
         '<div class="erp-chips">' +
-        '<button type="button" class="m-btn ' + (it.guardado ? 'm-btn-secundario' : 'm-btn-primario') + ' m-btn-sm" data-accion="revisar" data-i="' + i + '" title="' + (it.guardado ? 'Abrir el vale guardado para corregirlo' : 'Abrir la vista previa de este vale') + '">' + (it.guardado ? 'Corregir' : 'Revisar y guardar') + '</button>' +
-        (i > 0 && !it.guardado ? '<button type="button" class="m-btn m-btn-secundario m-btn-sm" data-accion="unir" data-i="' + i + '" title="Pasar estas fotos al vale de arriba (por ejemplo, el reverso)">Unir con el anterior</button>' : '') +
-        (!it.guardado ? '<button type="button" class="m-btn m-btn-fantasma m-btn-sm" data-accion="quitar-item" data-i="' + i + '" title="Quitar esta foto del paquete sin guardar nada">Quitar</button>' : '') +
+        (ocupado ? '' : '<button type="button" class="m-btn ' + (it.guardado ? 'm-btn-secundario' : 'm-btn-primario') + ' m-btn-sm" data-accion="revisar" data-i="' + i + '" title="' + (it.guardado ? 'Abrir el vale guardado para corregirlo' : 'Abrir la vista previa de este vale') + '">' + (it.guardado ? 'Corregir' : 'Revisar y guardar') + '</button>') +
+        (!ocupado && !it.guardado && it.fotos.length && (it.estado === 'error' || it.error) ? '<button type="button" class="m-btn m-btn-secundario m-btn-sm" data-accion="releer" data-i="' + i + '" title="Volver a mandar estas fotos a leer">Volver a leer</button>' : '') +
+        (i > 0 && !it.guardado && !ocupado ? '<button type="button" class="m-btn m-btn-secundario m-btn-sm" data-accion="unir" data-i="' + i + '" title="Pasar estas fotos al vale de arriba (por ejemplo, el reverso)">Unir con el anterior</button>' : '') +
+        (!it.guardado && !ocupado ? '<button type="button" class="m-btn m-btn-fantasma m-btn-sm" data-accion="quitar-item" data-i="' + i + '" title="Quitar esta foto del paquete sin guardar nada">Quitar</button>' : '') +
         '</div></div></li>';
     }).join('') + '</ul>';
     return html;
@@ -748,7 +964,7 @@
   function abrirEditor(vale, extra) {
     const v = JSON.parse(JSON.stringify(vale));
     v.renglones = (v.renglones || []).map(function (r) { return Object.assign({}, r); });
-    E.editor = Object.assign({ vale: v, fotos: [], fotoActual: 0, zoom: 1, giro: 0, texto: '', item: null, original: JSON.stringify(v) }, extra || {});
+    E.editor = Object.assign({ vale: v, fotos: [], fotoActual: 0, zoom: 1, giro: 0, texto: '', item: null, itemObj: null, dudas: [], leyendo: false, original: JSON.stringify(v) }, extra || {});
     const capa = abrirCapa('<div class="editor" id="editor"></div>', 'capa-editor');
     E.editor.capa = capa;
     pintarEditor();
@@ -785,7 +1001,8 @@
         '<button type="button" class="m-icono-btn" data-ed="zoom" data-d="1" title="Acercar la foto" aria-label="Acercar">' + ico('acercar') + '</button>' +
         '<button type="button" class="m-icono-btn" data-ed="girar" title="Girar la foto un cuarto de vuelta" aria-label="Girar">' + ico('girar') + '</button>' +
         (soloLee ? '' : '<label class="m-btn m-btn-secundario m-btn-sm" title="Agregar otra foto a este vale, por ejemplo el reverso"><input type="file" accept="image/*" multiple data-ed="mas-fotos" class="sr">Otra foto</label>') +
-        '</div><p class="m-texto-suave nota-chica">En el iPhone: mantén presionada la foto para copiar su texto y pégalo en «Texto del vale», o toca un campo y escoge «Escanear texto».</p></div>';
+        (soloLee ? '' : '<button type="button" class="m-btn m-btn-secundario m-btn-sm" data-ed="ia"' + (ed.leyendo ? ' disabled' : '') + ' title="Mandar las fotos de este vale a leer y llenar lo que esté vacío">' + (ed.leyendo ? 'Leyendo…' : 'Leer las fotos') + '</button>') +
+        '</div></div>';
     } else if (!soloLee) {
       fotos = '<div class="visor visor-vacio"><p class="m-texto-suave">Este vale no tiene foto en pantalla (las fotos no se guardan).</p><label class="m-btn m-btn-secundario m-btn-sm" title="Poner una foto para leer el vale"><input type="file" accept="image/*" multiple data-ed="mas-fotos" class="sr">Poner foto</label></div>';
     }
@@ -793,7 +1010,8 @@
       '<button type="button" class="m-icono-btn" data-ed="cerrar" title="Cerrar sin guardar" aria-label="Cerrar">' + ico('cerrar') + '</button></div>' +
       '<div class="editor-cuerpo">' + fotos + '<div class="editor-form">';
     if (!soloLee) {
-      html += '<details class="texto-vale"' + (ed.texto ? ' open' : '') + '><summary>Texto del vale (Texto en vivo)</summary>' +
+      if (ed.dudas && ed.dudas.length) html += '<div class="m-franja franja-dudas"><strong>Revisa:</strong> ' + ed.dudas.map(esc).join(' · ') + '</div>';
+      html += '<details class="texto-vale"' + (ed.texto ? ' open' : '') + '><summary>Pegar texto a mano (si hace falta)</summary>' +
         '<textarea class="m-entrada" data-e="texto" rows="4" placeholder="Pega aquí el texto copiado de la foto">' + esc(ed.texto) + '</textarea>' +
         '<button type="button" class="m-btn m-btn-secundario m-btn-sm" data-ed="leer" title="Repartir el texto pegado en los campos vacíos">Llenar con este texto</button></details>';
     }
@@ -819,7 +1037,7 @@
     html += '<div class="m-franja" id="faltaEditor"' + (f.length ? '' : ' hidden') + '>' + (f.length ? 'Falta: ' + esc(f.join(', ')) + '. Se puede guardar igual.' : '') + '</div>';
     html += '</div></div>';
     if (!soloLee) {
-      const conSiguiente = ed.item != null && E.paquete && siguientePendiente(ed.item) >= 0;
+      const conSiguiente = idxEditor(ed) >= 0 && siguientePendiente(idxEditor(ed)) >= 0;
       html += '<div class="hoja-pie">' +
         (v.id ? '<button type="button" class="m-btn m-btn-fantasma m-btn-sm boton-borrar" data-ed="borrar" title="Borrar este vale (pide confirmación)">' + ico('borrar') + 'Borrar</button>' : '<span></span>') +
         '<div class="erp-chips">' +
@@ -883,10 +1101,16 @@
     return h + '</div>';
   }
 
+  function idxEditor(ed) {
+    if (!ed || !E.paquete || !ed.itemObj) return -1;
+    return E.paquete.items.indexOf(ed.itemObj);
+  }
+
   function siguientePendiente(desde) {
     if (!E.paquete) return -1;
-    for (let i = desde + 1; i < E.paquete.items.length; i++) if (!E.paquete.items[i].guardado) return i;
-    for (let i = 0; i < desde; i++) if (!E.paquete.items[i].guardado) return i;
+    const libre = function (it) { return !it.guardado && it.estado !== 'cola' && it.estado !== 'leyendo'; };
+    for (let i = desde + 1; i < E.paquete.items.length; i++) if (libre(E.paquete.items[i])) return i;
+    for (let i = 0; i < desde; i++) if (libre(E.paquete.items[i])) return i;
     return -1;
   }
 
@@ -984,8 +1208,8 @@
 
   function agregarFotosEditor(files) {
     const ed = E.editor;
-    Array.from(files || []).forEach(function (f) { ed.fotos.push({ url: URL.createObjectURL(f), nombre: f.name }); });
-    if (ed.item != null && E.paquete && E.paquete.items[ed.item]) E.paquete.items[ed.item].fotos = ed.fotos.slice();
+    Array.from(files || []).forEach(function (f) { ed.fotos.push({ url: URL.createObjectURL(f), nombre: f.name, archivo: f }); });
+    if (idxEditor(ed) >= 0) ed.itemObj.fotos = ed.fotos.slice();
     ed.fotoActual = ed.fotos.length - 1;
     ed.zoom = 1;
     ed.giro = 0;
@@ -1007,6 +1231,7 @@
     if (a === 'agregar') { v.renglones.push(nuevoRenglon(b.dataset.c, v.unidad)); pintarEditor(); return; }
     if (a === 'quitar') { v.renglones.splice(+b.dataset.i, 1); pintarEditor(); return; }
     if (a === 'leer') { aplicarTexto(); return; }
+    if (a === 'ia') { await leerEnEditor(); return; }
     if (a === 'borrar') {
       const ok = await preguntar({ titulo: 'Borrar el vale No. ' + (v.numero || 'sin número'), texto: 'Se borra de ' + nombreMes(E.mes) + ' con todos sus renglones. No se puede deshacer.', si: 'Borrar', peligro: true, siAyuda: 'Borrar este vale para siempre' });
       if (!ok) return;
@@ -1022,6 +1247,44 @@
       return;
     }
     if (a === 'guardar') { await guardarEditor(b.dataset.sig === '1'); }
+  }
+
+  async function leerEnEditor() {
+    const ed = E.editor;
+    if (!ed || ed.leyendo || !ed.fotos.length) return;
+    const v = ed.vale;
+    const fotos = ed.fotos.slice(0, LOTE);
+    ed.leyendo = true;
+    pintarEditor();
+    try {
+      const prep = [];
+      for (const f of fotos) prep.push(await prepararFoto(f));
+      const r = await Datos.leerFotos({ fotos: prep, unidad: v.unidad, pilotos: pilotosConocidos(), anterior: '' });
+      if (E.editor !== ed) return;
+      const d = (r.documentos || []).reduce(function (a, b) { return unirLecturas(a, b); }, null);
+      const x = valeDeLectura(d, v.unidad);
+      const llenos = [];
+      ['numero', 'fecha', 'total', 'piloto', 'placa'].forEach(function (k) {
+        if (x[k] != null && x[k] !== '' && (v[k] == null || v[k] === '')) { v[k] = x[k]; llenos.push(k === 'numero' ? 'número' : k); }
+      });
+      const vacios = !v.renglones.some(function (y) { return num(y.monto) != null; });
+      if (vacios && x.renglones.length) { v.renglones = x.renglones; llenos.push(x.renglones.length + ' renglón' + (x.renglones.length === 1 ? '' : 'es')); }
+      else {
+        let nuevos = 0;
+        x.renglones.forEach(function (y) {
+          if (!v.renglones.some(function (z) { return z.concepto === y.concepto && num(z.monto) === num(y.monto); })) { v.renglones.push(y); nuevos++; }
+        });
+        if (nuevos) llenos.push(nuevos + ' renglón' + (nuevos === 1 ? '' : 'es'));
+      }
+      ed.dudas = x.dudas;
+      if (ed.itemObj) ed.itemObj.lectura = d;
+      aviso(llenos.length ? 'Se llenó: ' + llenos.join(', ') + '. Revísalo antes de guardar.' : 'La lectura no trajo nada nuevo para los campos vacíos.', llenos.length ? 'ok' : 'alerta');
+    } catch (e) {
+      aviso(e.message, 'error');
+    } finally {
+      ed.leyendo = false;
+      if (E.editor === ed) pintarEditor();
+    }
   }
 
   function aplicarTexto() {
@@ -1101,14 +1364,14 @@
       E.vales = await Datos.listarVales(E.mes);
       const f = faltantes(v);
       aviso('Vale No. ' + (v.numero || 'sin número') + ' guardado' + (f.length ? '. Falta: ' + f.join(', ') : '.'), f.length ? 'alerta' : 'ok');
-      const item = ed.item;
-      if (item != null && E.paquete && E.paquete.items[item]) {
+      const item = idxEditor(ed);
+      if (item >= 0) {
         Object.assign(E.paquete.items[item], { guardado: true, id: id, numero: v.numero, total: v.total });
       }
       cerrarCapa(ed.capa);
       E.editor = null;
       guardarScroll(pintar);
-      if (siguiente && item != null) {
+      if (siguiente && item >= 0) {
         const s = siguientePendiente(item);
         if (s >= 0) setTimeout(function () { revisarItem(s); }, 200);
       }
@@ -1120,9 +1383,10 @@
 
   function revisarItem(i) {
     const it = E.paquete.items[i];
+    if (it.estado === 'cola' || it.estado === 'leyendo') return;
     if (it.guardado) {
       const v = E.vales.find(function (x) { return x.id === it.id; });
-      if (v) abrirEditor(v, { fotos: it.fotos.slice(), item: i });
+      if (v) abrirEditor(v, { fotos: it.fotos.slice(), item: i, itemObj: it });
       return;
     }
     const u = E.paquete.unidad;
@@ -1132,7 +1396,10 @@
       piloto: previo ? previo.piloto : '', placa: previo ? previo.placa : '', notas: '',
       renglones: u === 'TACOMA' ? [nuevoRenglon('diesel', u)] : []
     };
-    abrirEditor(base, { fotos: it.fotos.slice(), item: i });
+    const x = valeDeLectura(it.lectura, u);
+    ['numero', 'fecha', 'total', 'piloto', 'placa'].forEach(function (k) { if (x[k] != null && x[k] !== '') base[k] = x[k]; });
+    if (x.renglones.length) base.renglones = x.renglones;
+    abrirEditor(base, { fotos: it.fotos.slice(), item: i, itemObj: it, dudas: x.dudas });
   }
 
   function editarFactura(f) {
@@ -1243,10 +1510,11 @@
     if (a === 'marcar-fact-todas') { E.facturas.forEach(function (f) { if (t.checked) E.marcadasFact.add(f.id); else E.marcadasFact.delete(f.id); }); guardarScroll(pintar); return; }
     if (a === 'fotos') {
       const files = Array.from(t.files || []);
-      files.forEach(function (f) { E.paquete.items.push({ fotos: [{ url: URL.createObjectURL(f), nombre: f.name }], guardado: false }); });
+      files.forEach(function (f) { E.paquete.items.push({ fotos: [{ url: URL.createObjectURL(f), nombre: f.name, archivo: f }], guardado: false, estado: 'cola' }); });
       t.value = '';
       guardarScroll(pintar);
-      if (files.length) aviso(files.length + ' foto' + (files.length === 1 ? '' : 's') + ' en el paquete. Ábrelas con «Revisar y guardar».');
+      if (files.length) aviso(files.length + ' foto' + (files.length === 1 ? '' : 's') + ' en el paquete. Se están leyendo; cuando digan «Por revisar», ábrelas.');
+      leerPaquete();
       return;
     }
     if (a === 'subir-plantilla') {
@@ -1354,13 +1622,26 @@
       pintar();
       return;
     }
-    if (a === 'sin-foto') { E.paquete.items.push({ fotos: [], guardado: false }); revisarItem(E.paquete.items.length - 1); guardarScroll(pintar); return; }
+    if (a === 'sin-foto') { E.paquete.items.push({ fotos: [], guardado: false, estado: 'leido', lectura: null }); revisarItem(E.paquete.items.length - 1); guardarScroll(pintar); return; }
+    if (a === 'releer') {
+      const it = E.paquete.items[+b.dataset.i];
+      if (it && !it.guardado) { it.estado = 'cola'; it.error = ''; it.lectura = null; guardarScroll(pintar); leerPaquete(); }
+      return;
+    }
+    if (a === 'releer-todas') {
+      E.paquete.items.forEach(function (it) { if (it.estado === 'error' && !it.guardado && it.fotos.length) { it.estado = 'cola'; it.error = ''; } });
+      guardarScroll(pintar);
+      leerPaquete();
+      return;
+    }
     if (a === 'revisar') { revisarItem(+b.dataset.i); return; }
     if (a === 'unir') {
       const i = +b.dataset.i;
       const it = E.paquete.items[i];
       const ant = E.paquete.items[i - 1];
       ant.fotos = ant.fotos.concat(it.fotos);
+      ant.lectura = unirLecturas(ant.lectura, it.lectura);
+      if (ant.estado === 'error' && it.estado !== 'error') { ant.estado = 'leido'; ant.error = ''; }
       E.paquete.items.splice(i, 1);
       aviso('Fotos unidas al vale de arriba.');
       guardarScroll(pintar);

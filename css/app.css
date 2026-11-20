@@ -122,6 +122,9 @@ select.m-entrada { padding-right: var(--e-6); }
 .sin-foto { display: grid; place-items: center; width: 112px; height: 76px; border: 1px dashed var(--border); border-radius: var(--radio-sm); color: var(--text-muted); font-size: var(--t-xs); }
 .item-info { display: grid; gap: var(--e-2); min-width: 0; }
 .item-titulo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-2); font-weight: 600; }
+.item-paquete.con-error { border-left: 4px solid var(--peligro); }
+.item-error { margin: 0; color: var(--peligro); }
+.franja-dudas { display: block; margin-bottom: var(--e-3); line-height: 1.5; }
 
 .excel-caja { display: grid; gap: var(--e-3); justify-items: start; padding: var(--e-5); }
 .excel-caja .m-titulo-3 { margin-top: 2px; }

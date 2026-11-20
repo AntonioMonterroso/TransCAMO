@@ -233,6 +233,18 @@
       fallo(r.error, 'No se pudo guardar tu color');
     },
 
+    async leerFotos(pedido) {
+      if (!conSupabase) throw new Error('La lectura automática necesita la conexión a Supabase.');
+      const r = await sb.functions.invoke('leer-vale', { body: pedido });
+      if (r.error) {
+        let msg = '';
+        try { const j = await r.error.context.json(); msg = j && j.error; } catch (e) { msg = ''; }
+        throw new Error(msg || 'No se pudo conectar con la lectura automática.');
+      }
+      if (!r.data || r.data.error) throw new Error((r.data && r.data.error) || 'La lectura no devolvió datos.');
+      return r.data;
+    },
+
     alCambiarSesion(fn) {
       if (conSupabase) sb.auth.onAuthStateChange(function (evento) { if (evento === 'SIGNED_OUT' || evento === 'SIGNED_IN') fn(evento); });
     }
