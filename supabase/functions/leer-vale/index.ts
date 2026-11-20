@@ -88,6 +88,8 @@ const SISTEMA = `Lees fotos de papeles de una empresa de transporte de combustib
 Papeles que llegan:
 - Vale «VALE A: ESTACIÓN SANTANDER 1» con número impreso en rojo (No.03832 → numero "3832", sin ceros a la izquierda), «Por Q.» (total), DIA/MES/AÑO (fecha), una tabla CANTIDAD / CONCEPTO / VALOR y «TOTAL Q.». Los conceptos impresos (GASOLINA SUPER, GASOLINA REGULAR, DIESEL, LUBRICANTES, GRASAS, ACEITES, FILTROS) muchas veces están tachados y encima escribieron otra cosa: usa lo escrito a mano, no lo impreso. Abajo o al lado suelen escribir la pipa (TS-02), el piloto y la placa (C-775BSS).
 - Reverso de un vale: a mano, «Cargó en Puma», «Cargó en Santander» o «Cargó en Camo», destinos (Reu, Acapán, Champerico, Ayutía, Nuevo San Carlos, Puerto Quetzal…), galones por producto con su letra (1,000 S = super, 1,000 R = regular, 2,000 D = diésel, B) y «Total = 7,000 Gls» (galones transportados). Se ve el frente al revés, en espejo: no lo leas como datos.
+- Reverso tipo «Recorrido» (sobre todo de la TS-04 o TAG): una lista de traslados de varios días, con fechas (01-10-26, 02-10-26) y líneas como «Traslado 2,000 gls Diésel Ayutía para Reu», «500 gls Regular / 200 gls Diésel Gasolinera A.G.». Muchas veces NO trae total: gal_trans es la SUMA de todos los galones de todas las líneas y de todos los días (en ese ejemplo 2,000 + 500 + 200 = 2,700). Destinos: todos los lugares que aparecen (de dónde y para dónde, y gasolineras), sin repetir, en el orden en que salen.
+- Las fotos pueden venir de cabeza o de lado: léelas igual.
 - Ticket o comprobante de arbitrio, peaje o parqueo (municipalidad, impreso).
 - Factura o recibo de un taller, repuestos o lubricantes, a veces engrapada detrás de un vale.
 

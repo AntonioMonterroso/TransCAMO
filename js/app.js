@@ -629,8 +629,13 @@
       if (rc.gal_trans != null && (u.tipo === 'pipa' || u.tipo === 'tag')) comb.gal_trans = rc.gal_trans;
       if (rc.cargo && u.tipo === 'pipa') comb.cargo = rc.cargo;
       if (rc.destinos && u.tipo !== 'tacoma') comb.destino = rc.destinos;
-    } else if (rc.gal_trans != null || rc.destinos) {
-      x.dudas.push('Trae recorrido (' + [rc.gal_trans != null ? fmtNum(rc.gal_trans, 0) + ' gal' : '', rc.destinos || ''].filter(Boolean).join(', ') + ') pero no un renglón de diésel.');
+    } else if ((rc.gal_trans != null || rc.destinos) && (u.tipo === 'pipa' || u.tipo === 'tag')) {
+      const n = nuevoRenglon('diesel', unidad);
+      n.gal_trans = rc.gal_trans;
+      if (rc.cargo && u.tipo === 'pipa') n.cargo = rc.cargo;
+      if (rc.destinos) n.destino = rc.destinos;
+      x.renglones.push(normalizarRenglon(n, unidad));
+      x.dudas.push('Solo trae el recorrido (' + [rc.gal_trans != null ? fmtNum(rc.gal_trans, 0) + ' gal' : '', rc.destinos || ''].filter(Boolean).join(', ') + '): si es el reverso de otro vale, usa «Unir con el anterior»; si no, llena los galones cargados y el monto del diésel.');
     }
     const fa = d.factura || {};
     if (fa.serie || fa.nit || fa.proveedor || fa.monto != null) {
