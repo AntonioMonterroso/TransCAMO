@@ -11,7 +11,7 @@ const ORIGENES = [
 ];
 
 const UNIDADES = ["TS01", "TS02", "TS03", "TS04", "Rastra", "TACOMA", ""];
-const CONCEPTOS = ["diesel", "viatico", "arbitrio", "peaje", "reparacion", "sueldo", "otro"];
+const CONCEPTOS = ["diesel", "super", "regular", "viatico", "arbitrio", "peaje", "reparacion", "sueldo", "otro"];
 const CARGOS = ["santander", "puma", "camo", ""];
 
 const numONulo = { anyOf: [{ type: "number" }, { type: "null" }] };
@@ -57,9 +57,15 @@ const ESQUEMA = {
           recorrido: {
             type: "object",
             additionalProperties: false,
-            required: ["gal_trans", "cargo", "destinos"],
+            required: ["gal_trans", "productos", "cargo", "destinos"],
             properties: {
               gal_trans: numONulo,
+              productos: {
+                type: "object",
+                additionalProperties: false,
+                required: ["super", "regular", "diesel"],
+                properties: { super: numONulo, regular: numONulo, diesel: numONulo },
+              },
               cargo: { type: "string", enum: CARGOS },
               destinos: texto,
             },
@@ -94,7 +100,7 @@ Papeles que llegan:
 - Factura o recibo de un taller, repuestos o lubricantes, a veces engrapada detrás de un vale.
 
 Conceptos de cada renglón (escoge el más cercano a lo escrito; en «escrito» copia el texto tal cual):
-- diesel: diésel o combustible de la pipa; «galones» = la CANTIDAD (por ejemplo 54.37) y «monto» = el VALOR en quetzales.
+- diesel, super, regular: compras de combustible, según la fila del vale donde está (DIESEL, GASOLINA SUPER, GASOLINA REGULAR) o lo escrito. Un vale puede traer varias: cada una es su propio renglón. «galones» = la CANTIDAD (por ejemplo 54.37) y «monto» = el VALOR en quetzales. Si la fila impresa está tachada y escribieron otro combustible, usa lo escrito.
 - viatico: viático, comida, alimentación del piloto.
 - arbitrio: arbitrio o tasa municipal.
 - peaje: peaje.
@@ -119,6 +125,7 @@ Reglas:
 - Para un ticket de arbitrio o peaje suelto: tipo "ticket" y un renglón con su monto.
 - Para una factura: llena «factura» (serie y número juntos, NIT, proveedor, fecha, monto). Si respalda un vale, va dentro de ese documento. Si no hay factura, todo "" y monto null.
 - recorrido: solo en vales de combustible; gal_trans = el total de galones transportados; si no hay, null, cargo "" y destinos "" (destinos separados por coma).
+- recorrido.productos: galones transportados de cada producto sumando todas las líneas del reverso (S = super, R = regular, D = diesel). En el ejemplo 1,000 S, 1,000 R, 1,000 S, 1,000 R, 2,000 D, 1,000 S → super 3000, regular 2000, diesel 2000. Si no dice el producto, null.
 - dudas: frases cortas en español de lo que no se leyó bien o no cuadra (por ejemplo «El 400 del viático está borroso» o «La suma de renglones no da el total»). Vacío si todo está claro.`;
 
 function cors(origen: string | null) {

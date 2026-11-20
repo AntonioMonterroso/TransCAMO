@@ -75,7 +75,7 @@
       if (!conSupabase) {
         return Local.leer('vales', []).filter(function (v) { return v.mes === mes; });
       }
-      const r = await sb.from('vales').select('id,mes,unidad,numero,fecha,total,piloto,placa,notas,creado_en,editado_en,renglones(id,orden,concepto,tipo,clase,fecha,monto,galones,gal_trans,cargo,destino,detalle,mes_anterior,viajes,factura)').eq('mes', mes).order('creado_en');
+      const r = await sb.from('vales').select('id,mes,unidad,numero,fecha,total,piloto,placa,notas,creado_en,editado_en,renglones(id,orden,concepto,tipo,clase,fecha,monto,galones,gal_trans,cargo,destino,detalle,mes_anterior,viajes,factura,productos)').eq('mes', mes).order('creado_en');
       fallo(r.error, 'No se pudieron leer los vales');
       return r.data.map(function (v) {
         v.renglones = (v.renglones || []).sort(function (a, b) { return a.orden - b.orden; });

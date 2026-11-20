@@ -13,6 +13,7 @@ No es parte del ERP de la firma: tiene su propia base y se publica aparte.
 - `js/lector.js`: reparte un texto pegado a mano (respaldo si la lectura falla).
 - `supabase/functions/leer-vale/index.ts`: función de Supabase que manda las fotos a Claude Haiku 5.5 y devuelve los vales agrupados (frente, reverso y tickets). No guarda las fotos. Solo contesta a usuarios con sesión y rol Administrador o Captura, desde studiomonterroso.com o localhost:8977. La llave va en el secreto `ANTHROPIC_API_KEY` de Supabase (vence 19/11/2027).
 - `sql/03-lectura-ia.sql`: tabla `lecturas_ia` y función `usar_lecturas` (tope de 300 fotos por usuario al día, hora de Guatemala).
+- `sql/04-productos.sql`: columna `renglones.productos` (galones transportados de súper, regular y diésel) y `guardar_vale` que la guarda.
 - Subir la función: `supabase functions deploy leer-vale --project-ref qbcysmomueqrqwyaqkvc --no-verify-jwt --use-api` (con un token de acceso temporal).
 - `js/datos.js`: guarda en Supabase; si `js/config.js` está vacío, trabaja en «modo de prueba» dentro del navegador.
 - `sql/01-esquema.sql`: tablas, permisos y la bodega privada de la plantilla.

@@ -14,6 +14,8 @@
 
   const CONCEPTOS = [
     { id: 'diesel', nombre: 'Diésel', tipo: 'combustible' },
+    { id: 'super', nombre: 'Gasolina súper', tipo: 'combustible' },
+    { id: 'regular', nombre: 'Gasolina regular', tipo: 'combustible' },
     { id: 'viatico', nombre: 'Viático', tipo: 'viatico' },
     { id: 'arbitrio', nombre: 'Arbitrio', tipo: 'gasto', clase: 'reparacion', detalle: 'Arbitrio' },
     { id: 'peaje', nombre: 'Peaje', tipo: 'gasto', clase: 'reparacion', detalle: 'Peaje' },
@@ -28,6 +30,12 @@
     { id: 'santander', nombre: 'Santander' },
     { id: 'puma', nombre: 'Puma Lerin' },
     { id: 'camo', nombre: 'Camo' }
+  ];
+
+  const PRODUCTOS = [
+    { id: 'super', nombre: 'Súper', letra: 'S' },
+    { id: 'regular', nombre: 'Regular', letra: 'R' },
+    { id: 'diesel', nombre: 'Diésel', letra: 'D' }
   ];
 
   const ROLES = { admin: 'Administrador', captura: 'Captura', lector: 'Solo ver' };
@@ -247,7 +255,8 @@
     const x = Object.assign({}, r);
     x.tipo = c.tipo;
     x.clase = c.tipo === 'gasto' ? c.clase : null;
-    if (c.tipo !== 'combustible') { x.galones = null; x.gal_trans = null; x.cargo = null; x.mes_anterior = false; x.viajes = null; }
+    if (c.tipo !== 'combustible') { x.galones = null; x.gal_trans = null; x.cargo = null; x.mes_anterior = false; x.viajes = null; x.productos = null; }
+    if (c.tipo === 'combustible' && UNI[unidad] && UNI[unidad].tipo !== 'pipa' && UNI[unidad].tipo !== 'tag') x.productos = null;
     if (c.tipo === 'combustible' && UNI[unidad] && UNI[unidad].tipo !== 'pipa') { x.cargo = null; x.mes_anterior = false; }
     if (c.tipo !== 'gasto') x.factura = null;
     if (c.tipo === 'gasto' && !x.detalle && c.detalle) x.detalle = c.detalle;
@@ -261,10 +270,12 @@
     if (num(v.total) == null) f.push('total');
     if (!v.renglones || !v.renglones.length) f.push('renglones');
     const u = UNI[v.unidad];
+    const primero = (v.renglones || []).find(function (r) { return tipoDe(r) === 'combustible'; });
     (v.renglones || []).forEach(function (r) {
       if (num(r.monto) == null) f.push((CON[r.concepto] ? CON[r.concepto].nombre : 'renglón') + ' sin monto');
       if (tipoDe(r) === 'combustible') {
         if (num(r.galones) == null) f.push('galones cargados');
+        if (r !== primero) return;
         if (u && u.tipo === 'pipa' && num(r.gal_trans) == null) f.push('galones transportados');
         if (u && u.tipo === 'pipa' && num(r.gal_trans) != null && !r.cargo) f.push('dónde cargó');
         if (u && u.tipo === 'rastra' && !(r.viajes && Object.keys(r.viajes).length)) f.push('tipo de viaje');
@@ -660,6 +671,7 @@
     if (x.recorrido.gal_trans == null && rb.gal_trans != null) x.recorrido.gal_trans = rb.gal_trans;
     if (!x.recorrido.cargo && rb.cargo) x.recorrido.cargo = rb.cargo;
     if (!x.recorrido.destinos && rb.destinos) x.recorrido.destinos = rb.destinos;
+    if (rb.productos && !(x.recorrido.productos && Object.keys(x.recorrido.productos).some(function (k) { return x.recorrido.productos[k] != null; }))) x.recorrido.productos = rb.productos;
     x.factura = x.factura || {};
     const fb = b.factura || {};
     ['fecha', 'serie', 'nit', 'proveedor'].forEach(function (k) { if (!x.factura[k] && fb[k]) x.factura[k] = fb[k]; });
@@ -679,15 +691,15 @@
     if (d.placa) x.placa = String(d.placa).toUpperCase().replace(/\s+/g, '');
     (d.renglones || []).forEach(function (r) {
       const c = CON[r.concepto] ? r.concepto : 'otro';
-      if (r.monto == null && c !== 'diesel') return;
-      if (u.tipo === 'tacoma' && c !== 'diesel') { x.dudas.push('Se dejó fuera «' + (r.escrito || CON[c].nombre) + '»: la Tacoma solo lleva diésel.'); return; }
+      if (r.monto == null && CON[c].tipo !== 'combustible') return;
+      if (u.tipo === 'tacoma' && CON[c].tipo !== 'combustible') { x.dudas.push('Se dejó fuera «' + (r.escrito || CON[c].nombre) + '»: la Tacoma solo lleva combustible.'); return; }
       const n = nuevoRenglon(c, unidad);
       n.monto = r.monto;
       if (CON[c].tipo === 'combustible') {
         n.galones = r.galones;
         if (r.galones > 0 && r.monto > 0) {
           const precio = r.monto / r.galones;
-          if (precio < 20 || precio > 70) x.dudas.push('Revisa los galones de diésel: ' + fmtNum(r.galones, 3) + ' gal por ' + fmtQ(r.monto) + ' da ' + fmtQ(precio) + ' por galón.');
+          if (precio < 20 || precio > 70) x.dudas.push('Revisa los galones de ' + CON[c].nombre.toLowerCase() + ': ' + fmtNum(r.galones, 3) + ' gal por ' + fmtQ(r.monto) + ' da ' + fmtQ(precio) + ' por galón.');
         }
       }
       if (CON[c].tipo === 'gasto') {
@@ -699,13 +711,19 @@
     });
     const rc = d.recorrido || {};
     const comb = x.renglones.find(function (r) { return tipoDe(r) === 'combustible'; });
+    const prods = {};
+    PRODUCTOS.forEach(function (p) { const n = rc.productos ? rc.productos[p.id] : null; if (n != null && n > 0) prods[p.id] = n; });
+    const hayProd = Object.keys(prods).length > 0;
+    if (hayProd && rc.gal_trans == null) rc.gal_trans = Object.keys(prods).reduce(function (a, k) { return a + prods[k]; }, 0);
     if (comb) {
+      if (hayProd && (u.tipo === 'pipa' || u.tipo === 'tag')) comb.productos = prods;
       if (rc.gal_trans != null && (u.tipo === 'pipa' || u.tipo === 'tag')) comb.gal_trans = rc.gal_trans;
       if (rc.cargo && u.tipo === 'pipa') comb.cargo = rc.cargo;
       if (rc.destinos && u.tipo !== 'tacoma') comb.destino = rc.destinos;
     } else if ((rc.gal_trans != null || rc.destinos) && (u.tipo === 'pipa' || u.tipo === 'tag')) {
       const n = nuevoRenglon('diesel', unidad);
       n.gal_trans = rc.gal_trans;
+      if (hayProd) n.productos = prods;
       if (rc.cargo && u.tipo === 'pipa') n.cargo = rc.cargo;
       if (rc.destinos) n.destino = rc.destinos;
       x.renglones.push(normalizarRenglon(n, unidad));
@@ -1114,7 +1132,7 @@
     html += '<section class="erp-ficha-sec"><h3>Renglones</h3><p class="m-texto-suave nota-chica">El vale trae impreso GRASAS, ACEITES y demás, pero muchas veces lo tachan y escriben otra cosa. Escoge lo que de verdad dice.</p>';
     html += v.renglones.map(function (r, i) { return renglonHtml(r, i, u, soloLee); }).join('');
     if (!soloLee) {
-      html += '<div class="erp-chips agregar-renglon">' + CONCEPTOS.filter(function (c) { return u.tipo !== 'tacoma' || c.id === 'diesel'; }).map(function (c) {
+      html += '<div class="erp-chips agregar-renglon">' + CONCEPTOS.filter(function (c) { return u.tipo !== 'tacoma' || c.tipo === 'combustible'; }).map(function (c) {
         return '<button type="button" class="m-chip-accion" data-ed="agregar" data-c="' + c.id + '" title="Agregar un renglón de ' + esc(c.nombre.toLowerCase()) + '">+ ' + esc(c.nombre) + '</button>';
       }).join('') + '</div>';
     }
@@ -1152,13 +1170,17 @@
     };
     let h = '<div class="renglon"><div class="renglon-cabeza">' +
       '<select class="m-entrada" data-r="' + i + '" data-rc="concepto"' + dis + ' aria-label="Concepto">' +
-      CONCEPTOS.filter(function (x) { return u.tipo !== 'tacoma' || x.id === 'diesel'; }).map(function (x) { return '<option value="' + x.id + '"' + (x.id === r.concepto ? ' selected' : '') + '>' + esc(x.nombre) + '</option>'; }).join('') +
+      CONCEPTOS.filter(function (x) { return u.tipo !== 'tacoma' || x.tipo === 'combustible'; }).map(function (x) { return '<option value="' + x.id + '"' + (x.id === r.concepto ? ' selected' : '') + '>' + esc(x.nombre) + '</option>'; }).join('') +
       '</select>' +
       (soloLee ? '' : '<button type="button" class="m-icono-btn" data-ed="quitar" data-i="' + i + '" title="Quitar este renglón" aria-label="Quitar renglón">' + ico('cerrar') + '</button>') +
       '</div><div class="rejilla-campos">';
     if (c.tipo === 'combustible') {
       h += ic('Galones cargados', 'galones', r.galones, 'decimal', '54.37') + ic('Monto', 'monto', r.monto, 'decimal');
-      if (u.tipo === 'pipa' || u.tipo === 'tag') h += ic('Galones transportados', 'gal_trans', r.gal_trans, 'decimal', '7000');
+      if (u.tipo === 'pipa' || u.tipo === 'tag') {
+        h += ic('Galones transportados', 'gal_trans', r.gal_trans, 'decimal', '7000');
+        const pr = r.productos || {};
+        h += PRODUCTOS.map(function (p) { return ic('Transportó ' + p.nombre.toLowerCase() + ' (' + p.letra + ')', 'p_' + p.id, pr[p.id], 'decimal', 'galones'); }).join('');
+      }
       if (u.tipo === 'pipa') {
         h += '<label class="erp-campo"><span>Cargó en</span><select class="m-entrada" data-r="' + i + '" data-rc="cargo"' + dis + '><option value="">Sin dato</option>' + CARGOS.map(function (x) { return '<option value="' + x.id + '"' + (r.cargo === x.id ? ' selected' : '') + '>' + esc(x.nombre) + '</option>'; }).join('') + '</select></label>';
       }
@@ -1176,6 +1198,10 @@
     }
     h += ic('Fecha (si es otra)', 'fecha', r.fecha, null, 'aaaa-mm-dd');
     h += '</div>';
+    if (c.tipo === 'combustible' && (u.tipo === 'pipa' || u.tipo === 'tag')) {
+      const tp = textoProductos(r);
+      h += '<p class="m-texto-suave nota-chica aviso-productos" data-prod-aviso="' + i + '"' + (tp ? '' : ' hidden') + '>' + esc(tp) + '</p>';
+    }
     if (c.tipo === 'combustible' && u.tipo === 'pipa') {
       h += '<label class="casilla" title="Marcar si este viaje se cobró el mes anterior: no suma a Puma, Santander ni Camo"><input type="checkbox" data-r="' + i + '" data-rc="mes_anterior"' + (r.mes_anterior ? ' checked' : '') + dis + '><span>Viene del mes anterior (no se cobra este mes)</span></label>';
     }
@@ -1221,6 +1247,10 @@
       if (c.indexOf('f_') === 0) {
         r.factura = Object.assign({}, r.factura || {});
         r.factura[c.slice(2)] = t.value;
+      } else if (c.indexOf('p_') === 0) {
+        r.productos = Object.assign({}, r.productos || {});
+        if (t.value === '') delete r.productos[c.slice(2)]; else r.productos[c.slice(2)] = t.value;
+        avisoProductos(r, +t.dataset.r);
       } else if (c === 'viaje_cant') {
         const clave = Object.keys(r.viajes || {})[0];
         if (clave) { r.viajes = {}; r.viajes[clave] = t.value; }
@@ -1231,6 +1261,21 @@
       if (c === 'monto') refrescarCuadre();
       else refrescarFaltantes();
     }
+  }
+
+  function avisoProductos(r, i) {
+    const caja = E.editor && E.editor.capa.querySelector('[data-prod-aviso="' + i + '"]');
+    if (!caja) return;
+    caja.textContent = textoProductos(r);
+    caja.hidden = !caja.textContent;
+  }
+
+  function textoProductos(r) {
+    const pr = r.productos || {};
+    const ks = Object.keys(pr).filter(function (k) { return num(pr[k]) != null; });
+    if (!ks.length || num(r.gal_trans) == null) return '';
+    const suma = ks.reduce(function (a, k) { return a + num(pr[k]); }, 0);
+    return Math.abs(suma - num(r.gal_trans)) < 0.01 ? '' : 'Los productos suman ' + fmtNum(suma, 2) + ' gal y el total transportado dice ' + fmtNum(r.gal_trans, 2) + '.';
   }
 
   function refrescarCuadre() {
@@ -1431,6 +1476,11 @@
       const x = normalizarRenglon(r, v.unidad);
       delete x._cant;
       ['monto', 'galones', 'gal_trans'].forEach(function (k) { x[k] = num(x[k]); });
+      if (x.productos) {
+        const pr = {};
+        Object.keys(x.productos).forEach(function (k) { const n = num(x.productos[k]); if (n != null) pr[k] = n; });
+        x.productos = Object.keys(pr).length ? pr : null;
+      }
       if (x.fecha && !/^\d{4}-\d{2}-\d{2}$/.test(x.fecha)) x.fecha = null;
       if (x.viajes) Object.keys(x.viajes).forEach(function (k) { x.viajes[k] = num(x.viajes[k]); });
       if (x.factura) {
@@ -1819,6 +1869,9 @@
     if (ahora !== anchoPrevio) { cerrarMenuMovil(); if (E.usuario && !E.editor) guardarScroll(pintar); }
     anchoPrevio = ahora;
   });
+
+  document.addEventListener('gesturestart', function (ev) { ev.preventDefault(); }, { passive: false });
+  document.addEventListener('touchmove', function (ev) { if (ev.touches && ev.touches.length > 1) ev.preventDefault(); }, { passive: false });
 
   document.addEventListener('keydown', function (ev) {
     if (ev.key === 'Escape' && E.editor && $capas.lastElementChild === E.editor.capa) cerrarEditor();
