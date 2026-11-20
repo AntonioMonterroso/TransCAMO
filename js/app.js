@@ -166,6 +166,23 @@
   }
 
   let nivelCapa = 0;
+  let ignorarPop = 0;
+  let urlActual = '';
+  const trasPop = [];
+
+  function despuesDeHistoria(fn) {
+    if (ignorarPop > 0) trasPop.push(fn); else fn();
+  }
+
+  function ponerHistoriaCapa(capa) {
+    capa._histFuera = false;
+    capa._histPuesta = false;
+    despuesDeHistoria(function () {
+      if (!capa.parentNode || capa._histFuera) return;
+      history.pushState({ tc: 'capa' }, '');
+      capa._histPuesta = true;
+    });
+  }
 
   function abrirCapa(html, clase) {
     nivelCapa++;
@@ -175,11 +192,21 @@
     capa.innerHTML = '<div class="capa-fondo"></div><div class="capa-caja" role="dialog" aria-modal="true">' + html + '</div>';
     $capas.appendChild(capa);
     document.body.classList.add('con-capa');
+    ponerHistoriaCapa(capa);
     return capa;
   }
 
-  function cerrarCapa(capa) {
+  function capaArriba() {
+    const l = Array.from($capas.children).filter(function (c) { return !c.classList.contains('saliendo'); });
+    return l[l.length - 1] || null;
+  }
+
+  function cerrarCapa(capa, porAtras) {
     if (!capa || !capa.parentNode) return;
+    if (!capa._histFuera) {
+      capa._histFuera = true;
+      if (capa._histPuesta && !porAtras) { ignorarPop++; history.back(); }
+    }
     capa.classList.add('saliendo');
     nivelCapa = Math.max(0, nivelCapa - 1);
     setTimeout(function () {
@@ -197,6 +224,7 @@
         '<button type="button" class="m-btn m-btn-secundario" data-r="no" title="' + esc(o.noAyuda || 'Volver sin hacer nada') + '">' + esc(o.no || 'Cancelar') + '</button>' +
         '<button type="button" class="m-btn ' + (o.peligro ? 'm-btn-peligro' : 'm-btn-primario') + '" data-r="si" title="' + esc(o.siAyuda || o.si) + '">' + esc(o.si) + '</button>' +
         '</div></div>', 'capa-pregunta');
+      capa._alAtras = function () { cerrarCapa(capa, true); resolver(false); };
       capa.addEventListener('click', function (ev) {
         const b = ev.target.closest('[data-r]');
         if (b) { cerrarCapa(capa); resolver(b.dataset.r === 'si'); }
@@ -349,11 +377,57 @@
     });
   }
 
+  function rutaActual() {
+    return '#/' + E.vista + (E.vista === 'paquete' && E.verPaquete && E.paquete ? '/' + E.paquete.unidad : '');
+  }
+
+  function navegar(reemplazar) {
+    if (!E.usuario) return;
+    const r = rutaActual();
+    const cambia = location.hash !== r;
+    urlActual = r;
+    despuesDeHistoria(function () {
+      if (reemplazar || !cambia) history.replaceState({ tc: 'ruta' }, '', r);
+      else history.pushState({ tc: 'ruta' }, '', r);
+    });
+  }
+
+  function leerRuta() {
+    const m = /^#\/([a-z]+)(?:\/([A-Za-z0-9]+))?$/.exec(location.hash || '');
+    if (m && vistasVisibles().some(function (v) { return v.id === m[1]; })) {
+      E.vista = m[1];
+      recordar('vista', E.vista);
+      E.verPaquete = !!(m[1] === 'paquete' && m[2] && E.paquete && E.paquete.unidad === m[2]);
+    } else if (E.vista === 'paquete') {
+      E.verPaquete = !!E.paquete;
+    }
+    navegar(true);
+  }
+
+  window.addEventListener('popstate', function () {
+    if (ignorarPop > 0) {
+      ignorarPop--;
+      if (!ignorarPop) trasPop.splice(0).forEach(function (f) { f(); });
+      return;
+    }
+    const capa = capaArriba();
+    if (capa) {
+      if (capa._alAtras) capa._alAtras(); else cerrarCapa(capa, true);
+      return;
+    }
+    if (!E.usuario) return;
+    cerrarMenuMovil();
+    leerRuta();
+    pintar();
+    window.scrollTo(0, 0);
+  });
+
   function pintar() {
-    if (!E.usuario) { pintarEntrar(); return; }
+    if (!E.usuario) { urlActual = ''; pintarEntrar(); return; }
     if (E.usuario.rol == null) { pintarSinPermiso(); return; }
     const visibles = vistasVisibles();
     if (!visibles.some(function (v) { return v.id === E.vista; })) E.vista = 'vales';
+    if (!urlActual) leerRuta();
     const actual = VISTAS.find(function (v) { return v.id === E.vista; });
     let grupo = null;
     let menu = '';
@@ -362,7 +436,7 @@
       let cuenta = '';
       if (v.id === 'vales' && E.vales.length) cuenta = '<span class="m-cuenta m-cuenta-neutra">' + E.vales.length + '</span>';
       if (v.id === 'facturas' && E.facturas.length) cuenta = '<span class="m-cuenta m-cuenta-neutra">' + E.facturas.length + '</span>';
-      menu += '<a href="#' + v.id + '" data-accion="vista" data-v="' + v.id + '"' + (E.vista === v.id ? ' aria-current="page"' : '') + ' title="' + esc(v.ayuda) + '">' + ico(v.icono) + '<span class="m-txt">' + esc(v.nombre) + '</span>' + cuenta + '</a>';
+      menu += '<a href="#/' + v.id + '" data-accion="vista" data-v="' + v.id + '"' + (E.vista === v.id ? ' aria-current="page"' : '') + ' title="' + esc(v.ayuda) + '">' + ico(v.icono) + '<span class="m-txt">' + esc(v.nombre) + '</span>' + cuenta + '</a>';
     });
     const anchoAngosto = window.matchMedia('(max-width: 860px)').matches;
     const compacto = !anchoAngosto && recordado('compacto', false);
@@ -743,9 +817,12 @@
   }
 
   function vistaPaquete() {
-    const p = E.paquete;
+    const p = E.verPaquete ? E.paquete : null;
     if (!p) {
+      const abierto = E.paquete && E.paquete.items.length ? E.paquete : null;
+      const sinGuardar = abierto ? abierto.items.filter(function (i) { return !i.guardado; }).length : 0;
       return titulo('Subir paquete') +
+        (abierto ? '<div class="m-franja franja-paquete"><span>Tienes un paquete de ' + esc(UNI[abierto.unidad].nombre) + ' con ' + abierto.items.length + ' vale' + (abierto.items.length === 1 ? '' : 's') + (sinGuardar ? ' (' + sinGuardar + ' sin guardar)' : '') + '.</span><button type="button" class="m-btn m-btn-primario m-btn-sm" data-accion="paquete" data-u="' + abierto.unidad + '" title="Volver al paquete de ' + esc(UNI[abierto.unidad].nombre) + '">Seguir con ese paquete</button></div>' : '') +
         '<p class="m-texto-suave">Escoge la pipa del paquete. Todos los vales que subas ahora quedan en esa pipa y en ' + esc(nombreMes(E.mes)) + '.</p>' +
         '<div class="rejilla-pipas">' + UNIDADES.map(function (u) {
           const r = resumenUnidad(u.id);
@@ -933,6 +1010,7 @@
       '<h4 class="erp-tema-grupo">Tamaño de la letra</h4><div class="erp-modo-sel erp-letra-sel" role="radiogroup" aria-label="Tamaño de la letra">' + Object.keys(T.LETRAS).map(function (k) { return '<button type="button" role="radio" data-letra-pref="' + k + '" aria-checked="' + (T.letraActual() === k) + '" title="Letra ' + T.LETRAS[k].toLowerCase() + '">' + T.LETRAS[k] + '</button>'; }).join('') + '</div>' +
       '<p class="m-texto-suave erp-modo-nota">Solo en la pantalla: el Excel sale siempre con su formato.</p></section></div>' +
       '<div class="hoja-pie">' + (Datos.modo === 'local' ? '<span></span>' : '<button type="button" class="m-btn m-btn-fantasma m-btn-sm" data-accion-p="salir" title="Cerrar tu sesión en este equipo">Cerrar sesión</button>') + '<button type="button" class="m-btn m-btn-secundario m-btn-sm" data-p="cerrar" title="Cerrar">Cerrar</button></div>', 'capa-perfil');
+    capa._alAtras = function () { if (T.vistaPrevia) T.vistaPrevia(null); cerrarCapa(capa, true); };
     capa.addEventListener('click', async function (ev) {
       if (ev.target.classList.contains('capa-fondo') || ev.target.closest('[data-p="cerrar"]')) { if (T.vistaPrevia) T.vistaPrevia(null); cerrarCapa(capa); return; }
       const t = ev.target.closest('.erp-tema[data-tema]');
@@ -972,6 +1050,11 @@
     E.editor = Object.assign({ vale: v, fotos: [], fotoActual: 0, zoom: 1, giro: 0, texto: '', item: null, itemObj: null, dudas: [], leyendo: false, original: JSON.stringify(v) }, extra || {});
     const capa = abrirCapa('<div class="editor" id="editor"></div>', 'capa-editor');
     E.editor.capa = capa;
+    capa._alAtras = async function () {
+      capa._histFuera = true;
+      const cerro = await cerrarEditor(true);
+      if (!cerro && capa.parentNode) ponerHistoriaCapa(capa);
+    };
     pintarEditor();
     capa.addEventListener('click', clicEditor);
     capa.addEventListener('input', escribirEditor);
@@ -1327,15 +1410,16 @@
     pintarEditor();
   }
 
-  async function cerrarEditor() {
+  async function cerrarEditor(porAtras) {
     const ed = E.editor;
-    if (!ed) return;
+    if (!ed) return true;
     if (E.usuario.rol !== 'lector' && JSON.stringify(ed.vale) !== ed.original) {
       const ok = await preguntar({ titulo: 'Cerrar sin guardar', texto: 'Hay cambios en este vale que no se han guardado.', si: 'Cerrar sin guardar', no: 'Seguir editando', peligro: true });
-      if (!ok) return;
+      if (!ok) return false;
     }
-    cerrarCapa(ed.capa);
+    cerrarCapa(ed.capa, porAtras);
     E.editor = null;
+    return true;
   }
 
   async function guardarEditor(siguiente) {
@@ -1564,6 +1648,8 @@
       cerrarMenuMovil();
       E.vista = b.dataset.v;
       recordar('vista', E.vista);
+      if (E.vista === 'paquete') E.verPaquete = !!E.paquete;
+      navegar();
       pintar();
       window.scrollTo(0, 0);
       return;
@@ -1590,6 +1676,8 @@
         if (!ok) return;
       }
       E.paquete = null;
+      E.verPaquete = false;
+      navegar(true);
       E.mes = moverMes(E.mes, +b.dataset.d);
       recordar('mes', E.mes);
       await cargarMes();
@@ -1616,7 +1704,19 @@
       } catch (e) { aviso(e.message, 'error'); }
       return;
     }
-    if (a === 'paquete') { E.paquete = { unidad: b.dataset.u, items: [] }; pintar(); return; }
+    if (a === 'paquete') {
+      const u = b.dataset.u;
+      if (E.paquete && E.paquete.unidad !== u && E.paquete.items.some(function (i) { return !i.guardado; })) {
+        const ok = await preguntar({ titulo: 'Empezar otro paquete', texto: 'El paquete de ' + UNI[E.paquete.unidad].nombre + ' tiene fotos sin guardar. Si empiezas uno de ' + UNI[u].nombre + ', se quitan.', si: 'Empezar otro', peligro: true });
+        if (!ok) return;
+      }
+      if (!E.paquete || E.paquete.unidad !== u) E.paquete = { unidad: u, items: [] };
+      E.verPaquete = true;
+      navegar();
+      pintar();
+      window.scrollTo(0, 0);
+      return;
+    }
     if (a === 'cerrar-paquete') {
       const pend = E.paquete.items.filter(function (i) { return !i.guardado; }).length;
       if (pend) {
@@ -1624,6 +1724,8 @@
         if (!ok) return;
       }
       E.paquete = null;
+      E.verPaquete = false;
+      navegar();
       pintar();
       return;
     }

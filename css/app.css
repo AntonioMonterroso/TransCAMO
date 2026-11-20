@@ -124,6 +124,7 @@ select.m-entrada { padding-right: var(--e-6); }
 .item-titulo { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-2); font-weight: 600; }
 .item-paquete.con-error { border-left: 4px solid var(--peligro); }
 .item-error { margin: 0; color: var(--peligro); }
+.franja-paquete { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-3); margin-bottom: var(--e-4); }
 .franja-dudas { display: block; margin-bottom: var(--e-3); line-height: 1.5; }
 
 .excel-caja { display: grid; gap: var(--e-3); justify-items: start; padding: var(--e-5); }
